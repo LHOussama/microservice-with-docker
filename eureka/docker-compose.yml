@@ -1,0 +1,113 @@
+services:
+  eureka-service:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    ports:
+      - "8761:8761"
+    expose:
+      - "8761"
+    container_name: eureka-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 10s
+  config-server:
+    build:
+        context: ../config-service/.
+        dockerfile: Dockerfile
+    ports:
+        - "8083:8083"
+    expose:
+        - "8083"
+    container_name: config-server
+    healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+        interval: 10s
+    environment:
+      - DISCOVERY_SERVICE_URL=http://eureka-service:8761/eureka
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+
+  gateway-service:
+      build:
+        context: ../gateway/.
+        dockerfile: Dockerfile
+      ports:
+            - "8081:8081"
+      expose:
+            - "8081"
+      container_name: gateway-service
+      healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+                interval: 10s
+      environment:
+        - DISCOVERY_SERVICE_URL=http://eureka-service:8761/eureka
+      depends_on:
+        eureka-service:
+          condition: service_healthy
+        config-server:
+            condition: service_healthy
+  db:
+    image: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+    volumes:
+      - ./db:/var/lib/mysql
+  phpmyadmin:
+    image: phpmyadmin
+    restart: always
+    ports:
+      - 8080:80
+    environment:
+      - PMA_ARBITRARY=1
+    depends_on:
+      - db
+  entreprise-service:
+    build:
+      context: ../entreprise/.
+      dockerfile: Dockerfile
+    ports:
+        - "8085:8085"
+    expose:
+        - "8085"
+    container_name: entreprise-service
+    healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
+        interval: 10s
+    environment:
+      - DISCOVERY_SERVICE_URL=http://eureka-service:8761/eureka
+      - CONFIG_URL=http://config-server:8083
+      - DATABASE_URL=jdbc:mysql://db:3306/entreprise_db?createDatabaseIfNotExist=true
+      - PASSWORD_DB=example
+    depends_on:
+      - config-server
+      - eureka-service
+      - db
+      - phpmyadmin
+      - gateway-service
+  customer-service:
+    build:
+      context: ../customer/.
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+    expose:
+      - "8082"
+    container_name: customer-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 10s
+    environment:
+      - DISCOVERY_SERVICE_URL=http://eureka-service:8761/eureka
+      - CONFIG_URL=http://config-server:8083
+      - DATABASE_URL=jdbc:mysql://db:3306/customer_db?createDatabaseIfNotExist=true
+      - PASSWORD_DB=example
+    depends_on:
+      - config-server
+      - eureka-service
+      - db
+      - phpmyadmin
+      - entreprise-service
+      - gateway-service
